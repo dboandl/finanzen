@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="de-AT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Finanzen</title>
+<meta name="description" content="Ausgaben und Einnahmen aus Bank-Exporten auswerten. Funktioniert offline.">
+<meta name="theme-color" content="#F3F4F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151817" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+@font-face{font-family:'Atkinson Hyperlegible';font-weight:400;font-style:normal;font-display:swap;src:url(fonts/atkinson-400.woff2) format('woff2')}
+@font-face{font-family:'Atkinson Hyperlegible';font-weight:700;font-style:normal;font-display:swap;src:url(fonts/atkinson-700.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:500;font-style:normal;font-display:swap;src:url(fonts/barlow-500.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:600;font-style:normal;font-display:swap;src:url(fonts/barlow-600.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:700;font-style:normal;font-display:swap;src:url(fonts/barlow-700.woff2) format('woff2')}
+/* Farben wie Stretch & Gym; die zwei Diagrammfarben sind dort mit dem Dataviz-Validator (Farbsehschwäche, Kontrast) geprüft. */
+:root{
+  --bg:#F3F4F1;--surface:#FFFFFF;--surface2:#F1F3EF;--ink:#1B1F1D;--muted:#5E6662;--line:#DADDD8;
+  --accent:#0F7B6C;--accent-ink:#FFFFFF;--accent-soft:#DDEFEB;--warn-soft:#FBEBD8;--warn-line:#EBC79A;
+  --st-wait:#B86E00;--st-err:#C43B3B;--good-ink:#006300;
+  --viz-1:#008571;--viz-2:#eb6834;--grid:#E6E8E4;--axis:#C3C7C1;
+  --radius:14px;
+  --display:'Barlow Condensed','Arial Narrow',sans-serif;
+  --body:'Atkinson Hyperlegible',system-ui,-apple-system,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151817;--surface:#1F2321;--surface2:#262B29;--ink:#EEF1EE;--muted:#9AA39E;--line:#2E3431;
+    --accent:#3CC9B0;--accent-ink:#0B1A17;--accent-soft:#1C3631;--warn-soft:#3A2A17;--warn-line:#6B4A22;
+    --st-wait:#F0A443;--st-err:#F27878;--good-ink:#0ca30c;
+    --viz-1:#1FA88F;--viz-2:#d95926;--grid:#2A2F2C;--axis:#444B47;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151817;--surface:#1F2321;--surface2:#262B29;--ink:#EEF1EE;--muted:#9AA39E;--line:#2E3431;
+  --accent:#3CC9B0;--accent-ink:#0B1A17;--accent-soft:#1C3631;--warn-soft:#3A2A17;--warn-line:#6B4A22;
+  --st-wait:#F0A443;--st-err:#F27878;--good-ink:#0ca30c;
+  --viz-1:#1FA88F;--viz-2:#d95926;--grid:#2A2F2C;--axis:#444B47;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);-webkit-font-smoothing:antialiased;
+  padding-block:max(12px,env(safe-area-inset-top)) calc(84px + env(safe-area-inset-bottom));
+  padding-inline:max(16px,env(safe-area-inset-left)) max(16px,env(safe-area-inset-right))}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+h2,h3,p{margin:0}
+.wrap{max-width:560px;margin:0 auto}
+.muted,.sub{color:var(--muted)}
+.sub{font-size:14px}
+.small{font-size:13px}
+.num{font-variant-numeric:tabular-nums}
+.pos{color:var(--good-ink)}
+
+.app-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:4px 2px 14px}
+.app-head h1{font:700 32px/1 var(--display);letter-spacing:.01em;margin:0;text-transform:uppercase}
+button.sync{border:0;background:none;padding:8px 0 8px 10px;margin-bottom:-4px;cursor:pointer;font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.sync::before,.st-line::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.sync.ok::before,.st-line.ok::before{background:var(--accent)}
+.sync.wait::before,.st-line.wait::before{background:var(--st-wait)}
+.sync.err::before,.st-line.err::before{background:var(--st-err)}
+.sync.busy::before,.st-line.busy::before{background:var(--accent);animation:blink .8s ease-in-out infinite alternate}
+.sync.err{color:var(--st-err)}
+@keyframes blink{to{opacity:.2}}
+@media (prefers-reduced-motion: reduce){.sync.busy::before,.st-line.busy::before{animation:none}}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.card > h3,.h3{font:700 20px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin-bottom:10px}
+.card .cap{color:var(--muted);font-size:14px;margin:-6px 0 10px}
+.h2{font:700 34px/1 var(--display);margin:2px 0 4px;text-transform:uppercase}
+.row{display:flex;gap:12px;align-items:center}
+.between{justify-content:space-between}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer;min-height:44px;text-decoration:none;color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.big{width:100%;min-height:56px;font:700 23px/1 var(--display);text-transform:uppercase;letter-spacing:.05em}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--st-err)}
+.btn:disabled{opacity:.4;cursor:default}
+.btns{display:flex;flex-direction:column;gap:8px}
+.linkbtn{border:0;background:none;padding:8px 0;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:14px;text-align:left}
+.icon-btn{border:0;background:none;width:44px;height:44px;display:grid;place-items:center;border-radius:12px;cursor:pointer;color:var(--muted)}
+.icon-btn svg{width:22px;height:22px}
+.icon-btn:disabled{opacity:.3;cursor:default}
+:is(button,a,input,select,summary,label):focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.monthbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
+.monthbar h2{font:700 24px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;text-align:center;flex:1}
+.back{display:inline-flex;align-items:center;gap:4px;font-weight:700;text-decoration:none;color:var(--muted);min-height:44px;font-size:15px}
+.back svg{width:18px;height:18px}
+
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;text-decoration:none;color:inherit;display:block;min-width:0}
+a.kpi{position:relative}
+a.kpi::after{content:"›";position:absolute;right:12px;top:8px;color:var(--muted);font-size:20px}
+.kpi .lbl{font-size:13px;color:var(--muted);line-height:1.25}
+.kpi .val{font:700 30px/1 var(--display);margin-top:6px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .dl{font-size:12px;margin-top:5px;color:var(--muted);line-height:1.25}
+.kpi.wide{grid-column:1/-1}
+
+.banner{display:flex;gap:10px;align-items:center;background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:12px;padding:12px 14px;margin-bottom:12px;color:var(--ink);text-decoration:none;font-size:15px}
+.banner b{font-weight:700}
+.banner span{flex:1}
+
+.bars{list-style:none;margin:0;padding:0}
+.bars li + li{border-top:1px solid var(--line)}
+.bar{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:10px 0;color:inherit;text-decoration:none;width:100%;background:none;border:0;text-align:left;cursor:pointer}
+.bar .nm{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .am{font-variant-numeric:tabular-nums;font-size:15px;text-align:right}
+.bar .tr{grid-column:1/-1;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
+.bar .tr i{display:block;height:100%;background:var(--viz-1);border-radius:3px}
+.bar .pc{color:var(--muted);font-size:13px;margin-left:6px}
+.bar.neg .tr i{background:var(--viz-2)}
+
+.txs{list-style:none;margin:0;padding:0}
+.txs li + li{border-top:1px solid var(--line)}
+.tx{display:grid;grid-template-columns:1fr auto;gap:2px 12px;width:100%;padding:10px 0;background:none;border:0;text-align:left;cursor:pointer;color:inherit}
+.tx .p{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tx .a{font-variant-numeric:tabular-nums;text-align:right;font-size:15px}
+.tx .m{font-size:13px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tx .c{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
+.chip{display:inline-block;font-size:12px;border-radius:999px;padding:1px 8px;background:var(--surface2);color:var(--muted)}
+.chip.anon{background:var(--accent-soft);color:var(--accent)}
+
+.chart{display:block;width:100%;overflow:visible}
+.chart text{font:12px/1 var(--body);fill:var(--muted);font-variant-numeric:tabular-nums}
+.chart .grid{stroke:var(--grid);stroke-width:1}
+.chart .base{stroke:var(--axis);stroke-width:1}
+.chart .lab{fill:var(--ink);font-weight:700}
+.chart .hit{fill:transparent}
+.chart g[tabindex]:focus-visible .hit{stroke:var(--accent);stroke-width:2}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+table.tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.tbl th,.tbl td{padding:7px 4px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl thead th{border-top:0;color:var(--muted);font-weight:700;font-size:12px}
+.tbl tfoot td{font-weight:700}
+.scrollx{overflow-x:auto;margin:0 -4px;padding:0 4px}
+
+.dlg{border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);padding:0;width:min(480px,calc(100% - 24px));max-height:calc(100% - 24px)}
+.dlg::backdrop{background:rgba(0,0,0,.5)}
+.dlg-in{padding:16px;display:flex;flex-direction:column;gap:12px}
+.dl-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px;margin:0}
+.dl-grid dt{color:var(--muted)}
+.dl-grid dd{margin:0;overflow-wrap:anywhere}
+.fld{display:flex;flex-direction:column;gap:5px;font-weight:700;font-size:14px}
+.fld input,.fld select{font-weight:400;font-size:16px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);min-height:46px;width:100%}
+.st-line{display:flex;gap:9px;align-items:baseline;font-size:15px;padding:10px 12px;border-radius:10px;background:var(--surface2)}
+.swrow{display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer}
+.swrow>span{display:flex;flex-direction:column;gap:3px;font-size:16px}
+.switch{appearance:none;-webkit-appearance:none;flex:none;width:52px;height:30px;border-radius:15px;margin:0;background:var(--muted);position:relative;cursor:pointer;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(22px)}
+@media (prefers-reduced-motion: reduce){.switch,.switch::after{transition:none}}
+.bigamt{font:700 40px/1 var(--display);font-variant-numeric:tabular-nums}
+
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;gap:4px;background:var(--surface);border-top:1px solid var(--line);
+  padding:6px max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+.tabbar a{flex:1;max-width:150px;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:56px;padding:4px 0;font:700 13px/1.1 var(--body);color:var(--muted);text-decoration:none;border-radius:12px;position:relative}
+.tabbar i{display:grid;place-items:center;width:58px;height:32px;border-radius:16px}
+.tabbar svg{width:24px;height:24px}
+.tabbar a[aria-current="page"]{color:var(--ink)}
+.tabbar a[aria-current="page"] i{background:var(--accent-soft);color:var(--accent)}
+.tabbar .badge{position:absolute;top:0;left:calc(50% + 8px);min-width:18px;height:18px;border-radius:9px;background:var(--st-err);color:#fff;font-size:11px;line-height:18px;text-align:center;padding:0 5px}
+
+.testbar{background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:12px;padding:8px 12px;margin-bottom:12px;font-size:14px}
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:15px;z-index:20;max-width:calc(100% - 32px);box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.toast[hidden]{display:none}
+.empty{text-align:center;padding:28px 12px}
+.empty p{margin:6px 0 14px;color:var(--muted)}
+.result{list-style:none;margin:0;padding:0}
+.result li{padding:10px 0;border-top:1px solid var(--line);font-size:15px}
+.result li:first-child{border-top:0}
+.result .err{color:var(--st-err)}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app-head">
+    <h1>Finanzen</h1>
+    <button type="button" class="sync" id="sync" data-act="sync-open" aria-haspopup="dialog">Nur auf diesem Handy</button>
+  </header>
+  <div id="testbar"></div>
+  <main id="view" tabindex="-1"></main>
+</div>
+<nav class="tabbar" aria-label="Bereiche">
+  <a href="#uebersicht" data-tab="uebersicht"><i><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 20V11h3.5v9zm6.25 0V5h3.5v15zM16.5 20v-6H20v6z"/></svg></i>Übersicht</a>
+  <a href="#inbox" data-tab="inbox"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5h12l2.5 8.5V19h-17zM3.5 13.5H8.5l1.5 2.5h4l1.5-2.5h5"/></svg></i>Inbox<span class="badge" id="badge" hidden></span></a>
+  <a href="#import" data-tab="import"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19h14"/></svg></i>Import</a>
+  <a href="#mehr" data-tab="mehr"><i><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/></svg></i>Mehr</a>
+</nav>
+<dialog class="dlg" id="dlg" aria-labelledby="dlg-title"></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="core.js"></script>
+<script src="sync.js"></script>
+<script>
+'use strict';
+const C = window.FinCore;
+const $ = s => document.querySelector(s);
+const h = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
+const EUR = new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR' });
+const EUR0 = new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const eur = n => EUR.format(n || 0);
+const eur0 = n => EUR0.format(Math.round(n || 0));
+const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '') + EUR0.format(Math.abs(Math.round(n)));
+const signed2 = n => (n > 0 ? '+' : n < 0 ? '−' : '') + EUR.format(Math.abs(n));
+const monthName = (m, opts = { month: 'long', year: 'numeric' }) => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('de-AT', opts); };
+const monthShort = m => monthName(m, { month: 'short' }).replace('.', '');
+const dateDE = d => { const [y, m, dd] = d.split('-'); return `${dd}.${m}.${y.slice(2)}`; };
+const addMonth = (m, n) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + n, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const thisMonth = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const SRC = { bank99: 'bank99', tr: 'Trade Republic' };
+const HOW = { manuell: 'von dir zugeordnet', regel: 'über deine Regel', allgemein: 'über eine allgemeine Regel', mcc: 'über die Händlerkategorie (MCC)' };
+const ICON = {
+  left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
+  right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+
+// ---------- Speicher: IndexedDB (Buchungen, Regeln, Einstellungen, Namensliste) + localStorage (Sync-Zustand) ----------
+// ?test in der Adresse: eigene, leere Datenbank, kein Sync – zum Ausprobieren, ohne echte Daten zu berühren.
+const TEST = new URLSearchParams(location.search).has('test');
+const DBNAME = TEST ? 'finanzen-test' : 'finanzen';
+const LSP = TEST ? 'fintest.' : 'fin.';
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(LSP + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { if (v == null) localStorage.removeItem(LSP + k); else localStorage.setItem(LSP + k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+const IDB = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(DBNAME, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => { IDB.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  all() {
+    return new Promise((res, rej) => {
+      const out = new Map(), rq = IDB.db.transaction('kv').objectStore('kv').openCursor();
+      rq.onsuccess = () => { const c = rq.result; if (c) { out.set(c.key, c.value); c.continue(); } else res(out); };
+      rq.onerror = () => rej(rq.error);
+    });
+  },
+  put(k, v) {
+    return new Promise((res, rej) => {
+      const t = IDB.db.transaction('kv', 'readwrite');
+      if (v == null) t.objectStore('kv').delete(k); else t.objectStore('kv').put(v, k);
+      t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  },
+};
+const PRIV = 'local/privat'; // Namensliste Name ↔ Kürzel: nur hier, wird nie synchronisiert und nie exportiert
+const SYNCED = /^(tx|rules|settings)\//;
+const docs = new Map();
+const Store = {
+  get: p => docs.get(p) || null,
+  set(p, doc, mark = true) {
+    if (doc == null) docs.delete(p); else docs.set(p, doc);
+    IDB.put(p, doc).catch(e => { console.warn(e); toast('Speichern auf dem Handy fehlgeschlagen.'); });
+    if (mark && SYNCED.test(p) && !TEST) Sync.mark(p);
+  },
+  paths: () => [...docs.keys()].filter(p => SYNCED.test(p)),
+  list: prefix => [...docs.entries()].filter(([p]) => p.startsWith(prefix)).map(([, d]) => d),
+};
+const priv = () => { let p = Store.get(PRIV); if (!p) { p = C.newPriv(); Store.set(PRIV, p, false); } return p; };
+const savePriv = p => Store.set(PRIV, p, false);
+
+// ---------- Abgeleitete Daten ----------
+let D = null; // { txs, byId, cats, rules, cl, months, clById }
+function recompute() {
+  const txs = Store.list('tx/').flatMap(m => Object.values(m.tx || {}));
+  const cats = C.buildCats(Store.get('settings/categories'));
+  const rules = Store.list('rules/');
+  const cl = C.classify(txs, rules, cats);
+  const clById = new Map(cl.map(c => [c.tx.id, c]));
+  D = { txs, cats, rules, cl, clById, months: C.monthsOf(cl) };
+  const open = cl.filter(c => !c.cat).length;
+  const b = $('#badge'); b.hidden = !open; b.textContent = open > 99 ? '99+' : open;
+}
+function setTx(tx) {
+  const p = 'tx/' + tx.date.slice(0, 7);
+  const m = clone(Store.get(p)) || { month: tx.date.slice(0, 7), tx: {} };
+  m.tx[tx.id] = tx; Store.set(p, m);
+}
+
+// ---------- Sync ----------
+const DEFAULT_REPO = 'dboandl/finanzen-daten';
+const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new';
+const Sync = createSync({
+  load: LS.get, save: LS.set,
+  getDoc: p => clone(Store.get(p)),
+  setDoc: (p, d) => Store.set(p, d, false),
+  onChange: () => { recompute(); render(); },
+  onState: setSync,
+});
+function setSync(st = Sync.status()) {
+  const el = $('#sync');
+  let cls = '', txt;
+  if (TEST) txt = 'Test, kein Sync';
+  else if (!st.configured) txt = 'Nur auf diesem Handy';
+  else if (st.running) { cls = 'busy'; txt = 'Synchronisiert …'; }
+  else if (st.error) { cls = 'err'; txt = 'Sync-Fehler'; }
+  else if (st.offline) { cls = 'wait'; txt = st.pending ? `Offline · ${st.pending} offen` : 'Offline'; }
+  else if (st.pending) { cls = 'wait'; txt = `${st.pending} nicht gesendet`; }
+  else { cls = 'ok'; txt = 'Synchronisiert'; }
+  el.className = 'sync ' + cls; el.textContent = txt;
+  const line = $('#sd-status');
+  if (line) {
+    line.className = 'st-line ' + cls;
+    line.textContent = st.error ? st.error : !st.configured ? 'Noch nicht eingerichtet.' : st.running ? 'Synchronisiert gerade …'
+      : st.offline ? 'Kein Internet. Änderungen werden später gesendet.' : st.pending ? `${st.pending} Änderung(en) warten.`
+      : st.last ? 'Alles gesendet. Zuletzt: ' + new Date(st.last).toLocaleString('de-AT') : 'Bereit.';
+  }
+}
+
+// ---------- Kleine Helfer für die Oberfläche ----------
+let toastT = null;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3500); }
+const catName = id => { const c = D.cats.byCat[id]; return c ? (c.groupName === c.name ? c.name : c.groupName + ' › ' + c.name) : 'Ohne Kategorie'; };
+function catOptions(sel) {
+  const order = ['aus', 'ein', 'topf', 'invest', 'umbuchung', 'versteckt'];
+  return `<option value="">– bitte wählen –</option>` + order.map(k => D.cats.groups.filter(g => g.kind === k).map(g =>
+    `<optgroup label="${h((k === 'aus' ? '' : C.KIND_NAMES[k] + ': ') + g.name)}">${g.cats.map(([cid, cn]) => {
+      const id = g.id + '/' + cid; return `<option value="${h(id)}"${id === sel ? ' selected' : ''}>${h(g.cats.length > 1 ? g.name + ' › ' + cn : g.name)}</option>`;
+    }).join('')}</optgroup>`).join('')).join('');
+}
+function txRow(c, { showCat = true } = {}) {
+  const t = c.tx;
+  return `<li><button type="button" class="tx" data-act="tx" data-id="${h(t.id)}">
+    <span class="p">${h(t.party || t.text || '—')}${t.anon ? ' <span class="chip anon">anonym</span>' : ''}</span>
+    <span class="a ${t.amt > 0 ? 'pos' : ''}">${signed2(t.amt)}</span>
+    <span class="m">${dateDE(t.date)} · ${h(SRC[t.src] || t.src)}${t.ref ? ' · ' + h(t.ref) : ''}</span>
+    <span class="c">${showCat ? h(c.cat ? catName(c.cat) : 'offen') : ''}</span></button></li>`;
+}
+function barRows(items, total, hrefFn, { neg = false } = {}) {
+  const max = Math.max(...items.map(i => Math.abs(i.v)), 1);
+  return `<ul class="bars">${items.map(i => {
+    const pct = total ? Math.round(i.v / total * 100) : 0, w = Math.max(1, Math.abs(i.v) / max * 100);
+    const inner = `<span class="nm">${h(i.name)}</span><span class="am">${eur(i.v)}${total ? `<span class="pc">${pct} %</span>` : ''}</span><span class="tr"><i style="width:${w.toFixed(1)}%"></i></span>`;
+    const href = hrefFn && hrefFn(i);
+    return `<li>${href ? `<a class="bar${neg || i.v < 0 ? ' neg' : ''}" href="${href}">${inner}</a>` : `<div class="bar${neg || i.v < 0 ? ' neg' : ''}">${inner}</div>`}</li>`;
+  }).join('')}</ul>`;
+}
+// Säulen pro Monat, mehrere Reihen nebeneinander, auch negative Werte (Topf). series: [{ name, c, vals }]
+function nice(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); const f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e; }
+function barChart({ labels, series, label, H = 170, signedVals = false }) {
+  const W = Math.max(260, Math.min(528, ($('#view').clientWidth || 360) - 34));
+  const padL = 44, padR = 6, padT = 16, padB = 22, pw = W - padL - padR, ph = H - padT - padB;
+  const all = series.flatMap(s => s.vals);
+  const max = nice(Math.max(0, ...all)), min = Math.min(0, ...all) < 0 ? -nice(-Math.min(...all)) : 0;
+  const y = v => padT + (max - v) / (max - min || 1) * ph;
+  const ticks = min < 0 ? [min, 0, max] : [0, max / 2, max];
+  const k = n => Math.abs(n) >= 1000 ? (n / 1000).toLocaleString('de-AT', { maximumFractionDigits: 1 }) + 'k' : Math.round(n).toLocaleString('de-AT');
+  let g = ticks.map(t => `<line class="${t === 0 ? 'base' : 'grid'}" x1="${padL}" x2="${W - padR}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${padL - 6}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end">${k(t)}</text>`).join('');
+  const band = pw / labels.length, gw = Math.min(band * 0.7, 18 * series.length + 4), bw = gw / series.length, every = Math.ceil(36 / band);
+  labels.forEach((lab, i) => {
+    const x0 = padL + band * i + (band - gw) / 2;
+    let marks = '';
+    series.forEach((s, j) => {
+      const v = s.vals[i] || 0; if (!v) return;
+      const yt = y(Math.max(v, 0)), yb = y(Math.min(v, 0));
+      const c = typeof s.c === 'function' ? s.c(v) : s.c;
+      marks += `<rect x="${(x0 + j * bw + 1).toFixed(1)}" y="${yt.toFixed(1)}" width="${Math.max(2, bw - 2).toFixed(1)}" height="${Math.max(1, yb - yt).toFixed(1)}" rx="3" fill="${c}"/>`;
+    });
+    const tip = lab.title + ': ' + series.map(s => (series.length > 1 ? s.name + ' ' : '') + (signedVals ? signed2(s.vals[i] || 0) : eur(s.vals[i] || 0))).join(', ');
+    g += `<g tabindex="0" role="img" aria-label="${h(tip)}"><title>${h(tip)}</title><rect class="hit" x="${(padL + band * i).toFixed(1)}" y="${padT}" width="${band.toFixed(1)}" height="${ph}"/>${marks}</g>`;
+    if ((labels.length - 1 - i) % every === 0) g += `<text x="${(padL + band * i + band / 2).toFixed(1)}" y="${H - 5}" text-anchor="middle">${h(lab.x)}</text>`;
+  });
+  const leg = series.length > 1 ? `<div class="legend">${series.map(s => `<span><i style="background:${typeof s.c === 'function' ? s.c(1) : s.c}"></i>${h(s.name)}</span>`).join('')}</div>` : '';
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="group" aria-label="${h(label)}">${g}</svg>${leg}`;
+}
+function monthRange(to, n) { const out = []; for (let i = n - 1; i >= 0; i--) out.push(addMonth(to, -i)); return out.filter(m => !D.months.length || m >= D.months[0]); }
+function monthBar(m, base) {
+  const first = D.months[0] || m, last = D.months[D.months.length - 1] || m;
+  return `<div class="monthbar">
+    <button type="button" class="icon-btn" data-go="${h(base + addMonth(m, -1))}" aria-label="Voriger Monat"${m <= first ? ' disabled' : ''}>${ICON.left}</button>
+    <h2>${h(monthName(m))}</h2>
+    <button type="button" class="icon-btn" data-go="${h(base + addMonth(m, 1))}" aria-label="Nächster Monat"${m >= last ? ' disabled' : ''}>${ICON.right}</button></div>`;
+}
+const defaultMonth = () => {
+  if (!D.months.length) return thisMonth();
+  const last = D.months[D.months.length - 1];
+  return last;
+};
+
+// ---------- Ansichten ----------
+function viewOverview(m) {
+  if (!D.txs.length) return `<section class="card empty"><h3>Noch keine Buchungen</h3><p>Lade einen Export von bank99 oder Trade Republic hoch. Kunden-Namen (MGT) werden dabei sofort anonymisiert.</p><a class="btn primary" href="#import">Zum Import</a></section>`;
+  const s = C.monthSummary(D.cl, m);
+  const topfs = D.cats.groups.filter(g => g.kind === 'topf');
+  const groups = Object.entries(s.groups).filter(([g]) => D.cats.byGroup[g].kind === 'aus').map(([g, v]) => ({ id: g, name: D.cats.byGroup[g].name, v })).sort((a, b) => b.v - a.v);
+  const range = monthRange(m, 12);
+  const sums = range.map(x => C.monthSummary(D.cl, x));
+  return `${monthBar(m, '#uebersicht/')}
+  <div class="kpis">
+    <a class="kpi" href="#gruppe/einnahmen/${m}"><div class="lbl">Einnahmen</div><div class="val">${eur0(s.ein)}</div></a>
+    <div class="kpi"><div class="lbl">Ausgaben</div><div class="val">${eur0(s.aus)}</div></div>
+    ${topfs.map(g => `<a class="kpi" href="#topf/${h(g.id)}"><div class="lbl">${h(g.name)} netto</div><div class="val ${s.topf[g.id] > 0 ? 'pos' : ''}">${signed(s.topf[g.id] || 0)}</div><div class="dl">kostet oder bringt diesen Monat</div></a>`).join('')}
+    <div class="kpi${topfs.length % 2 ? '' : ' wide'}"><div class="lbl">Übrig</div><div class="val ${s.uebrig > 0 ? 'pos' : ''}">${signed(s.uebrig)}</div><div class="dl">Einnahmen − Ausgaben${topfs.length ? ' ± Töpfe' : ''}${m >= thisMonth() ? ' · Monat läuft noch' : ''}</div></div>
+  </div>
+  ${s.offenN ? `<a class="banner" href="#inbox"><span><b>${s.offenN} Buchung${s.offenN === 1 ? '' : 'en'} ohne Kategorie</b> (${signed2(s.offen)}) – noch nicht mitgezählt.</span>${ICON.right.replace('<svg', '<svg width="20" height="20"')}</a>` : ''}
+  <section class="card"><h3>Ausgaben nach Gruppe</h3>
+    ${groups.length ? barRows(groups, s.aus, i => `#gruppe/${i.id}/${m}`) : '<p class="sub">Keine Ausgaben in diesem Monat.</p>'}
+  </section>
+  <section class="card"><h3>Verlauf</h3>
+    ${barChart({ labels: range.map(x => ({ x: monthShort(x), title: monthName(x) })), series: [{ name: 'Einnahmen', c: 'var(--viz-1)', vals: sums.map(x => x.ein) }, { name: 'Ausgaben', c: 'var(--viz-2)', vals: sums.map(x => x.aus) }], label: 'Einnahmen und Ausgaben pro Monat' })}
+  </section>
+  ${s.invest ? `<section class="card"><h3>Investment</h3><p>${s.invest > 0 ? 'Netto investiert' : 'Netto verkauft'}: <b class="num">${eur(Math.abs(s.invest))}</b></p><p class="sub small">Käufe und Verkäufe bei Trade Republic, nicht in den Ausgaben.</p></section>` : ''}`;
+}
+
+function viewGroup(gid, m) {
+  const g = D.cats.byGroup[gid];
+  if (!g) return `<p>Unbekannte Gruppe.</p>`;
+  const s = C.monthSummary(D.cl, m);
+  const list = D.cl.filter(c => c.group === gid && c.month === m).sort((a, b) => b.tx.date.localeCompare(a.tx.date));
+  const cats = g.cats.map(([cid, cn]) => ({ id: gid + '/' + cid, name: cn, v: s.cats[gid + '/' + cid] || 0 })).filter(c => c.v).sort((a, b) => b.v - a.v);
+  const total = s.groups[gid] || 0;
+  const range = monthRange(m, 12);
+  const vals = range.map(x => C.monthSummary(D.cl, x).groups[gid] || 0);
+  const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  return `<a class="back" href="#uebersicht/${m}">${ICON.left} Übersicht</a>
+  <h2 class="h2">${h(g.name)}</h2>
+  ${monthBar(m, `#gruppe/${gid}/`)}
+  <div class="kpis"><div class="kpi"><div class="lbl">${g.kind === 'ein' ? 'Einnahmen' : 'Ausgaben'} im Monat</div><div class="val">${eur0(total)}</div></div>
+    <div class="kpi"><div class="lbl">Ø ${vals.length} Monate</div><div class="val">${eur0(avg)}</div></div></div>
+  ${cats.length > 1 || (cats.length && g.cats.length > 1) ? `<section class="card"><h3>Kategorien</h3>${barRows(cats, total, null)}</section>` : ''}
+  <section class="card"><h3>Verlauf</h3>${barChart({ labels: range.map(x => ({ x: monthShort(x), title: monthName(x) })), series: [{ name: g.name, c: g.kind === 'ein' ? 'var(--viz-1)' : 'var(--viz-2)', vals }], label: g.name + ' pro Monat' })}</section>
+  <section class="card"><h3>Buchungen</h3>${list.length ? `<ul class="txs">${list.map(c => txRow(c)).join('')}</ul>` : '<p class="sub">Keine Buchungen in diesem Monat.</p>'}</section>`;
+}
+
+function viewTopf(gid) {
+  const g = D.cats.byGroup[gid];
+  if (!g || g.kind !== 'topf') return `<p>Unbekannter Topf.</p>`;
+  const months = D.months.filter(m => D.cl.some(c => c.group === gid && c.month === m));
+  if (!months.length) return `<a class="back" href="#uebersicht">${ICON.left} Übersicht</a><h2 class="h2">${h(g.name)}</h2><p class="sub">Noch keine Buchungen in diesem Topf.</p>`;
+  const rows = months.map(m => { const s = C.monthSummary(D.cl, m); return { m, net: s.topf[gid] || 0, cats: g.cats.map(([cid]) => s.cats[gid + '/' + cid] || 0) }; });
+  const last = rows[rows.length - 1], running = last.m >= thisMonth();
+  const done = running && rows.length > 1 ? rows.slice(0, -1) : rows; // laufender Monat zählt nicht in die Durchschnitte
+  const last12 = done.slice(-12);
+  const sum = a => a.reduce((x, y) => x + y.net, 0);
+  const shown = rows.slice(-24);
+  const list = D.cl.filter(c => c.group === gid).sort((a, b) => b.tx.date.localeCompare(a.tx.date)).slice(0, 40);
+  return `<a class="back" href="#uebersicht">${ICON.left} Übersicht</a>
+  <h2 class="h2">${h(g.name)}</h2>
+  <p class="sub" style="margin-bottom:12px">Was der Topf netto kostet (−) oder bringt (+). Nicht in den Ausgaben enthalten.</p>
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">${h(monthName(last.m))}</div><div class="val ${last.net > 0 ? 'pos' : ''}">${signed(last.net)}</div>${running ? '<div class="dl">Monat läuft noch</div>' : ''}</div>
+    <div class="kpi"><div class="lbl">Ø ${last12.length} Monat${last12.length === 1 ? '' : 'e'}</div><div class="val ${sum(last12) > 0 ? 'pos' : ''}">${signed(sum(last12) / last12.length)}</div>${running ? '<div class="dl">ohne laufenden Monat</div>' : ''}</div>
+    <div class="kpi wide"><div class="lbl">Gesamt seit ${h(monthName(rows[0].m))} (${rows.length} Monat${rows.length === 1 ? '' : 'e'})</div><div class="val ${sum(rows) > 0 ? 'pos' : ''}">${signed(sum(rows))}</div></div>
+  </div>
+  <section class="card"><h3>Netto pro Monat</h3>
+    ${barChart({ labels: shown.map(r => ({ x: monthShort(r.m), title: monthName(r.m) })), series: [{ name: 'Netto', c: v => v >= 0 ? 'var(--viz-1)' : 'var(--viz-2)', vals: shown.map(r => r.net) }], label: g.name + ' netto pro Monat', signedVals: true })}
+    <div class="legend"><span><i style="background:var(--viz-1)"></i>bringt</span><span><i style="background:var(--viz-2)"></i>kostet</span></div>
+  </section>
+  <section class="card"><h3>Pro Monat</h3><div class="scrollx"><table class="tbl">
+    <thead><tr><th>Monat</th>${g.cats.map(([, cn]) => `<th>${h(cn)}</th>`).join('')}<th>Netto</th></tr></thead>
+    <tbody>${[...rows].reverse().map(r => `<tr><td>${h(monthName(r.m, { month: 'short', year: '2-digit' }))}</td>${r.cats.map(v => `<td>${v ? signed(v) : '–'}</td>`).join('')}<td class="${r.net > 0 ? 'pos' : ''}">${signed(r.net)}</td></tr>`).join('')}</tbody>
+  </table></div></section>
+  <section class="card"><h3>Letzte Buchungen</h3><ul class="txs">${list.map(c => txRow(c)).join('')}</ul></section>`;
+}
+
+function inboxGroups() {
+  const open = D.cl.filter(c => !c.cat);
+  const m = new Map();
+  for (const c of open) {
+    const k = (c.tx.iban || c.tx.party) + '|' + (c.tx.amt < 0 ? '-' : '+');
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(c);
+  }
+  return [...m.values()].map(l => l.sort((a, b) => b.tx.date.localeCompare(a.tx.date))).sort((a, b) => b[0].tx.date.localeCompare(a[0].tx.date));
+}
+function viewInbox() {
+  const groups = inboxGroups();
+  if (!groups.length) return `<h2 class="h2">Inbox</h2><section class="card empty"><h3>Alles zugeordnet</h3><p>Jede Buchung hat eine Kategorie.</p></section>`;
+  const n = groups.reduce((a, g) => a + g.length, 0);
+  return `<h2 class="h2">Inbox</h2>
+  <p class="sub" style="margin-bottom:12px">${n} Buchung${n === 1 ? '' : 'en'} ohne Kategorie. Tippe eine an und wähle die Kategorie; als Regel gilt sie auch für alle anderen Buchungen von diesem Partner.</p>
+  <section class="card"><ul class="txs">${groups.map(l => {
+    const c = l[0], sum = l.reduce((a, x) => a + x.tx.amt, 0);
+    return `<li><button type="button" class="tx" data-act="tx" data-id="${h(c.tx.id)}">
+      <span class="p">${h(c.tx.party || c.tx.text || '—')}${c.tx.anon ? ' <span class="chip anon">anonym</span>' : ''}</span>
+      <span class="a ${sum > 0 ? 'pos' : ''}">${signed2(sum)}</span>
+      <span class="m">${l.length > 1 ? l.length + ' Buchungen · zuletzt ' : ''}${dateDE(c.tx.date)} · ${h(SRC[c.tx.src])}${c.tx.ref ? ' · ' + h(c.tx.ref) : ''}</span><span class="c"></span></button></li>`;
+  }).join('')}</ul></section>`;
+}
+
+let lastImport = null;
+function viewImport() {
+  return `<h2 class="h2">Import</h2>
+  <section class="card">
+    <label class="btn big primary filebtn">Export-Dateien wählen<input type="file" id="files" multiple accept=".csv,text/csv,text/comma-separated-values,application/csv,text/plain,application/vnd.ms-excel"></label>
+    <p class="sub" style="margin-top:12px">Oder direkt aus der Bank-App: Export erstellen → <b>Teilen</b> → <b>Finanzen</b>.</p>
+  </section>
+  ${lastImport ? `<section class="card"><h3>Ergebnis</h3><ul class="result">${lastImport.map(r => r.error ? `<li><b>${h(r.name)}</b><br><span class="err">${h(r.error)}</span></li>` : `<li><b>${h(r.label)}</b> <span class="sub small">${h(r.name)}</span><br>${r.neu} neu · ${r.dup} schon da · ${r.offen} ohne Kategorie${r.clients ? ` · ${r.clients} Klienten-Buchung${r.clients === 1 ? '' : 'en'} anonymisiert` : ''}</li>`).join('')}</ul>
+    ${lastImport.some(r => r.offen) ? '<a class="btn" href="#inbox" style="margin-top:10px">Zur Inbox</a>' : ''}</section>` : ''}
+  <section class="card"><h3>So bekommst du die Exporte</h3>
+    <p class="sub"><b>bank99:</b> Umsätze des Girokontos → Export → CSV.<br><b>Trade Republic:</b> Profil → Transaktionen exportieren (CSV).</p>
+    <p class="sub" style="margin-top:8px">Schon importierte Buchungen werden erkannt und übersprungen, Zeiträume dürfen sich also überschneiden. Buchungen mit <b>MGT</b> (Klienten) werden vor dem Speichern anonymisiert: nur das Kürzel und die Rechnungsnummer bleiben.</p>
+  </section>`;
+}
+
+function viewMore() {
+  const st = Sync.status(), p = priv();
+  const people = Object.entries(p.people);
+  const own = D.rules.slice().sort((a, b) => String(a.note || a.id).localeCompare(String(b.note || b.id)));
+  return `<h2 class="h2">Mehr</h2>
+  <section class="card"><h3>Sync</h3>
+    <p class="sub">${TEST ? 'Testmodus (?test): eigene Daten, kein Sync.' : st.configured ? `Repo <b>${h(st.repo)}</b>. ${st.pending ? st.pending + ' Änderung(en) warten.' : 'Alles gesendet.'}` : 'Noch nicht eingerichtet. Ohne Sync bleiben die Daten nur auf diesem Handy.'}</p>
+    ${TEST ? '' : '<button type="button" class="btn" data-act="sync-open" style="margin-top:10px">Sync einstellen</button>'}
+  </section>
+  <section class="card"><h3>Anonyme Personen</h3>
+    <p class="cap">Die echten Namen stehen nur auf diesem Handy und werden nie synchronisiert.</p>
+    ${people.length ? `<ul class="txs">${people.map(([k, v]) => `<li><button type="button" class="tx" data-act="person" data-k="${h(k)}"><span class="p">${h(k)}</span><span class="a sub small">${v.kind === 'client' ? 'Klient' : 'Person'}</span><span class="m">${h(v.name)}</span><span class="c">umbenennen</span></button></li>`).join('')}</ul>` : '<p class="sub">Noch keine.</p>'}
+  </section>
+  <section class="card"><h3>Deine Regeln</h3>
+    <p class="cap">${own.length} Regel${own.length === 1 ? '' : 'n'}. Sie gehen vor den allgemeinen Regeln.</p>
+    ${own.length ? `<ul class="txs">${own.map(r => `<li><button type="button" class="tx" data-act="rule" data-id="${h(r.id)}"><span class="p">${h(r.note || ruleText(r))}</span><span class="a"></span><span class="m">${h(catName(r.cat))}</span><span class="c">${D.cl.filter(c => c.rule === r).length}×</span></button></li>`).join('')}</ul>` : ''}
+  </section>
+  <section class="card"><h3>Kategorie hinzufügen</h3>
+    <div class="btns">
+      <label class="fld">Gruppe<select id="nc-group">${D.cats.groups.filter(g => g.kind === 'aus' || g.kind === 'ein' || g.kind === 'topf').map(g => `<option value="${h(g.id)}">${h(g.name)}</option>`).join('')}</select></label>
+      <label class="fld">Name<input id="nc-name" maxlength="40" autocomplete="off"></label>
+      <button type="button" class="btn" data-act="newcat">Hinzufügen</button>
+    </div>
+  </section>
+  <section class="card"><h3>Sicherung</h3>
+    <p class="cap">Buchungen, Regeln und Einstellungen als Datei, ohne die Namensliste.</p>
+    <button type="button" class="btn" data-act="backup">Sicherung herunterladen</button>
+    <p class="sub small" id="ver" style="margin-top:10px"></p>
+  </section>`;
+}
+function ruleText(r) {
+  const p = [];
+  if (r.iban) p.push('IBAN ' + r.iban);
+  if (r.party) p.push('Partner ' + r.party.replace(/^\^|\$$/g, ''));
+  if (r.text) p.push('Text „' + r.text + '“');
+  if (r.ref) p.push('Referenz „' + r.ref + '“');
+  if (r.sign) p.push(r.sign === '+' ? 'Eingänge' : 'Ausgänge');
+  return p.join(', ') || r.id;
+}
+
+// ---------- Routing ----------
+function route() {
+  const raw = location.hash.replace(/^#/, '') || 'uebersicht';
+  const [pathPart] = raw.split('?');
+  return pathPart.split('/');
+}
+function render() {
+  if (!D) return;
+  const r = route(), v = $('#view');
+  let html, tab = r[0];
+  const mOk = x => /^\d{4}-\d\d$/.test(x || '');
+  if (r[0] === 'gruppe') { html = viewGroup(r[1], mOk(r[2]) ? r[2] : defaultMonth()); tab = 'uebersicht'; }
+  else if (r[0] === 'topf') { html = viewTopf(r[1]); tab = 'uebersicht'; }
+  else if (r[0] === 'inbox') html = viewInbox();
+  else if (r[0] === 'import') html = viewImport();
+  else if (r[0] === 'mehr') html = viewMore();
+  else { html = viewOverview(mOk(r[1]) ? r[1] : defaultMonth()); tab = 'uebersicht'; }
+  v.innerHTML = html;
+  document.querySelectorAll('.tabbar a').forEach(a => { if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (r[0] === 'mehr' && window.caches) caches.keys().then(k => { const x = k.find(n => n.startsWith('fin-') && n !== 'fin-share'); const el = $('#ver'); if (x && el) el.textContent = 'Version ' + x.slice(4); }).catch(() => {});
+}
+let lastRoute = '';
+window.addEventListener('hashchange', () => {
+  render();
+  const r = route().join('/');
+  if (r !== lastRoute) { window.scrollTo(0, 0); lastRoute = r; }
+  if (location.hash.includes('geteilt=')) receiveShared();
+});
+let rz = null;
+window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(render, 200); });
+
+// ---------- Import ----------
+async function importFiles(files) {
+  const p = priv(), results = [], months = new Map();
+  const getMonth = key => { if (!months.has(key)) months.set(key, clone(Store.get('tx/' + key)) || { month: key, tx: {} }); return months.get(key); };
+  const known = new Set(D.txs.map(t => t.id));
+  const fresh = [];
+  for (const f of files) {
+    try {
+      const text = C.decodeBytes(new Uint8Array(await f.bytes()));
+      const { fmt, txs } = C.parseExport(text);
+      if (!fmt) { results.push({ name: f.name, error: 'Format nicht erkannt. Erwartet: bank99- oder Trade-Republic-Export (CSV).' }); continue; }
+      const r = { name: f.name, label: fmt === 'bank99' ? 'bank99' : 'Trade Republic', neu: 0, dup: 0, offen: 0, clients: 0 };
+      for (const t of txs) {
+        if (C.anonymise(t, p) === 'client') r.clients++; // vor allem anderen: ab hier kein Klienten-Name mehr
+        if (known.has(t.id)) { r.dup++; continue; }
+        known.add(t.id); getMonth(t.date.slice(0, 7)).tx[t.id] = t; r.neu++; fresh.push([t, r]);
+      }
+      results.push(r);
+    } catch (e) { console.warn(e); results.push({ name: f.name, error: 'Konnte nicht gelesen werden: ' + (e.message || e) }); }
+  }
+  savePriv(p);
+  for (const [key, doc] of months) Store.set('tx/' + key, doc);
+  recompute();
+  for (const [t, r] of fresh) if (!D.clById.get(t.id).cat) r.offen++;
+  lastImport = results;
+  if (!TEST && Sync.status().configured) Sync.schedule(1500);
+  return results;
+}
+const fileLike = (name, buf) => ({ name, bytes: async () => buf });
+async function receiveShared() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '');
+  history.replaceState(null, '', location.pathname + location.search + '#import');
+  if (q.get('geteilt') === 'fehler') { toast('Die geteilte Datei konnte nicht übernommen werden.'); return render(); }
+  try {
+    const c = await caches.open('fin-share'), keys = await c.keys(), files = [];
+    for (const k of keys) {
+      const res = await c.match(k);
+      files.push(fileLike(new URL(k.url).searchParams.get('name') || 'export.csv', await res.arrayBuffer()));
+      await c.delete(k);
+    }
+    if (!files.length) return render();
+    await importFiles(files);
+    toast('Geteilte Datei importiert.');
+  } catch (e) { console.warn(e); toast('Geteilte Datei konnte nicht importiert werden.'); }
+  render();
+}
+
+// ---------- Dialoge ----------
+const dlg = () => $('#dlg');
+function openTx(id) {
+  const c = D.clById.get(id); if (!c) return;
+  const t = c.tx, sameParty = D.cl.filter(x => !x.cat && x.tx.id !== t.id && sameKey(x.tx, t)).length;
+  const who = t.iban ? 'IBAN ' + t.iban : '„' + ruleParty(t).replace(/^\^/, '') + '“';
+  dlg().innerHTML = `<form method="dialog" class="dlg-in" id="txform">
+    <div class="row between"><h2 class="h3" id="dlg-title" style="margin:0">${h(t.party || '—')}</h2><button class="icon-btn" value="close" aria-label="Schließen">${ICON.close}</button></div>
+    <div class="bigamt ${t.amt > 0 ? 'pos' : ''}">${signed2(t.amt)}</div>
+    <dl class="dl-grid">
+      <dt>Datum</dt><dd>${dateDE(t.date)}${c.month !== t.date.slice(0, 7) ? ` (zählt für ${h(monthName(c.month))})` : ''}</dd>
+      <dt>Konto</dt><dd>${h(SRC[t.src] || t.src)}</dd>
+      ${t.type ? `<dt>Art</dt><dd>${h(t.type)}</dd>` : ''}
+      ${t.ref ? `<dt>Referenz</dt><dd>${h(t.ref)}</dd>` : ''}
+      ${t.text && t.text !== t.party ? `<dt>Text</dt><dd>${h(t.text)}</dd>` : ''}
+      ${t.iban ? `<dt>IBAN</dt><dd>${h(t.iban)}</dd>` : ''}
+      ${t.mcc ? `<dt>MCC</dt><dd>${h(t.mcc)}</dd>` : ''}
+      <dt>Jetzt</dt><dd>${c.cat ? h(catName(c.cat)) + ' <span class="sub small">' + h(HOW[c.how]) + (c.rule && c.rule.note ? ': ' + h(c.rule.note) : '') + '</span>' : '<b>ohne Kategorie</b>'}</dd>
+    </dl>
+    <label class="fld">Kategorie<select id="tx-cat" required>${catOptions(c.cat)}</select></label>
+    <label class="swrow"><span><b>Als Regel speichern</b><span class="sub small">Alle ${t.amt < 0 ? 'Ausgänge an' : 'Eingänge von'} ${h(who)} bekommen diese Kategorie, auch frühere${sameParty ? ` (${sameParty} weitere offen)` : ''}. Aus = nur diese Buchung.</span></span>
+      <input type="checkbox" role="switch" class="switch" id="tx-rule"${t.cat ? '' : ' checked'}></label>
+    <button type="button" class="btn primary" data-act="tx-save" data-id="${h(t.id)}">Speichern</button>
+    ${t.cat ? `<button type="button" class="btn ghost" data-act="tx-unset" data-id="${h(t.id)}">Eigene Zuordnung entfernen</button>` : ''}
+    ${!t.anon ? `<button type="button" class="linkbtn" data-act="tx-hide" data-id="${h(t.id)}">Diese Person anonymisieren</button>` : ''}
+  </form>`;
+  dlg().showModal();
+}
+const sameKey = (a, b) => (a.iban && a.iban === b.iban) || (!a.iban && !b.iban && ruleParty(a) === ruleParty(b));
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Partner ohne Filial-/Kassennummer am Ende ("BILLA DANKT 0006278" → ^BILLA DANKT), Kürzel genau.
+function ruleParty(t) {
+  if (t.anon) return '^' + reEsc(t.party) + '$';
+  const base = String(t.party || t.text || '').replace(/[\s\d\-/.*#:]+$/, '').trim() || String(t.party || '');
+  return '^' + reEsc(base);
+}
+function saveTx(id) {
+  const c = D.clById.get(id), cat = $('#tx-cat').value, asRule = $('#tx-rule').checked;
+  if (!cat) return toast('Bitte eine Kategorie wählen.');
+  const t = clone(c.tx);
+  let rid = null;
+  if (asRule) {
+    rid = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const rule = { id: rid, cat, sign: t.amt < 0 ? '-' : '+', note: (t.party || 'Regel') + (t.amt < 0 ? '' : ' (Eingang)'), created: new Date().toISOString().slice(0, 10) };
+    if (t.iban) rule.iban = t.iban; else rule.party = ruleParty(t);
+    Store.set('rules/' + rid, rule);
+    if (t.cat) { delete t.cat; setTx(t); }
+  } else { t.cat = cat; setTx(t); }
+  recompute(); dlg().close(); render();
+  const n = rid ? D.cl.filter(x => x.rule && x.rule.id === rid).length : 1;
+  toast(asRule ? `Regel gespeichert · gilt für ${n} Buchung${n === 1 ? '' : 'en'}.` : 'Gespeichert.');
+}
+function unsetTx(id) { const t = clone(D.clById.get(id).tx); delete t.cat; setTx(t); recompute(); dlg().close(); render(); toast('Eigene Zuordnung entfernt.'); }
+function hideTx(id) {
+  const t = D.clById.get(id).tx;
+  dlg().innerHTML = `<form method="dialog" class="dlg-in"><h2 class="h3" id="dlg-title">Person anonymisieren?</h2>
+    <p>„${h(t.party)}“ bekommt ein Kürzel. Name und IBAN werden aus allen Buchungen gelöscht, auch künftig beim Import. Den echten Namen siehst du nur noch hier am Handy unter <b>Mehr</b>.</p>
+    <p class="sub small">Schon synchronisierte ältere Stände bleiben in der Git-Historie des privaten Repos.</p>
+    <div class="btns"><button type="button" class="btn primary" data-act="tx-hide-ok" data-id="${h(id)}">Anonymisieren</button><button class="btn ghost" value="close">Abbrechen</button></div></form>`;
+}
+function hideTxOk(id) {
+  const p = priv(), t0 = D.clById.get(id).tx;
+  const oldIban = t0.iban, oldParty = ruleParty(t0);
+  const k = C.hidePerson(p, t0);
+  for (const doc of Store.list('tx/')) {
+    let changed = false; const m = clone(doc);
+    for (const t of Object.values(m.tx)) if (!t.anon && C.knownKurzel(p, t) === k) { C.anonymise(t, p); changed = true; }
+    if (changed) Store.set('tx/' + m.month, m);
+  }
+  for (const r of D.rules) {
+    if ((oldIban && r.iban === oldIban) || r.party === oldParty) {
+      const n = clone(r); delete n.iban; n.party = '^' + reEsc(k) + '$'; n.note = k; Store.set('rules/' + r.id, n);
+    }
+  }
+  savePriv(p); recompute(); dlg().close(); render(); toast(`Anonymisiert als ${k}.`);
+}
+function openPerson(k) {
+  const v = priv().people[k]; if (!v) return;
+  dlg().innerHTML = `<form method="dialog" class="dlg-in"><div class="row between"><h2 class="h3" id="dlg-title" style="margin:0">${h(k)}</h2><button class="icon-btn" value="close" aria-label="Schließen">${ICON.close}</button></div>
+    <p class="sub">${h(v.name)} · ${v.kind === 'client' ? 'Klient' : 'Person'}</p>
+    <label class="fld">Neues Kürzel<input id="pk-name" value="${h(k)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <p class="sub small">Nur Buchstaben, Ziffern, _ und -.</p>
+    <button type="button" class="btn primary" data-act="person-save" data-k="${h(k)}">Umbenennen</button></form>`;
+  dlg().showModal();
+}
+function savePerson(k) {
+  const to = $('#pk-name').value.trim(), p = priv();
+  if (to === k) return dlg().close();
+  if (!C.renameKurzel(p, k, to)) return toast('Geht nicht: Kürzel ungültig oder schon vergeben.');
+  for (const doc of Store.list('tx/')) {
+    let changed = false; const m = clone(doc);
+    for (const t of Object.values(m.tx)) if (t.party === k) { t.party = to; changed = true; }
+    if (changed) Store.set('tx/' + m.month, m);
+  }
+  for (const r of D.rules) if (r.party === '^' + reEsc(k) + '$') { const n = clone(r); n.party = '^' + reEsc(to) + '$'; if (n.note === k) n.note = to; Store.set('rules/' + r.id, n); }
+  savePriv(p); recompute(); dlg().close(); render(); toast('Umbenannt.');
+}
+function openRule(id) {
+  const r = D.rules.find(x => x.id === id); if (!r) return;
+  const n = D.cl.filter(c => c.rule === r).length;
+  dlg().innerHTML = `<form method="dialog" class="dlg-in"><div class="row between"><h2 class="h3" id="dlg-title" style="margin:0">Regel</h2><button class="icon-btn" value="close" aria-label="Schließen">${ICON.close}</button></div>
+    <p><b>${h(r.note || r.id)}</b></p>
+    <dl class="dl-grid"><dt>Wenn</dt><dd>${h(ruleText(r))}</dd><dt>Dann</dt><dd>${h(catName(r.cat))}</dd><dt>Trifft</dt><dd>${n} Buchung${n === 1 ? '' : 'en'}</dd></dl>
+    <button type="button" class="btn danger" data-act="rule-del" data-id="${h(id)}">Regel löschen</button></form>`;
+  dlg().showModal();
+}
+function delRule(id) { Store.set('rules/' + id, null); recompute(); dlg().close(); render(); toast('Regel gelöscht.'); }
+function newCat() {
+  const gid = $('#nc-group').value, name = $('#nc-name').value.trim();
+  if (!name) return toast('Bitte einen Namen eingeben.');
+  const ov = clone(Store.get('settings/categories')) || {};
+  ov.addCats = ov.addCats || {};
+  const id = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'k' + Date.now().toString(36);
+  if (D.cats.byCat[gid + '/' + id]) return toast('Diese Kategorie gibt es schon.');
+  (ov.addCats[gid] = ov.addCats[gid] || []).push([id, name]);
+  Store.set('settings/categories', ov); recompute(); render(); toast(`„${name}“ hinzugefügt.`);
+}
+function downloadBackup() {
+  const out = { app: 'Finanzen', exportedAt: new Date().toISOString(), docs: Object.fromEntries(Store.paths().map(p => [p, Store.get(p)])) };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }));
+  a.download = `finanzen-sicherung-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+function openSyncDlg() {
+  const c = Sync.cfg;
+  dlg().innerHTML = `<form method="dialog" class="dlg-in">
+    <div class="row between"><h2 class="h3" id="dlg-title" style="margin:0">Sync</h2><button class="icon-btn" value="close" aria-label="Schließen">${ICON.close}</button></div>
+    <div class="st-line" id="sd-status" role="status"></div>
+    <p class="sub">Alles wird zuerst am Handy gespeichert. Mit Internet gehen neue Buchungen und Regeln in dein privates GitHub-Repo. Die Namensliste der anonymisierten Personen bleibt immer am Handy.</p>
+    <label class="fld">Repository<input id="sd-repo" value="${h(c ? c.repo : DEFAULT_REPO)}" autocapitalize="off" autocomplete="off" spellcheck="false"></label>
+    <label class="fld">Zugriffstoken<input id="sd-token" type="password" placeholder="${c && c.hasToken ? 'Gespeichert – leer lassen, um es zu behalten' : 'github_pat_…'}" autocapitalize="off" autocomplete="off" spellcheck="false"></label>
+    <p class="sub small">Ein „fine-grained“ Token <b>nur für dieses Repo</b> mit „Contents: Read and write“. <a href="${TOKEN_URL}" target="_blank" rel="noopener">Auf GitHub erstellen ↗</a></p>
+    <div class="btns">
+      <button type="button" class="btn primary" data-act="sync-save">Speichern &amp; synchronisieren</button>
+      <button type="button" class="btn" data-act="sync-now">Jetzt synchronisieren</button>
+    </div>
+    ${c ? '<button type="button" class="linkbtn" data-act="sync-off">Trennen</button>' : ''}
+  </form>`;
+  setSync();
+  dlg().showModal();
+}
+function saveSyncCfg() {
+  const repo = $('#sd-repo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), token = $('#sd-token').value.trim(), c = Sync.cfg;
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return toast('Repository muss wie besitzer/name aussehen.');
+  if (!token && !(c && c.hasToken)) return toast('Bitte das Zugriffstoken einfügen.');
+  const fresh = !c || c.repo !== repo;
+  Sync.configure({ repo, token });
+  if (fresh) Sync.markAll(Store.paths());
+  $('#sd-token').value = '';
+  Sync.run();
+}
+
+// ---------- Klicks ----------
+document.addEventListener('click', e => {
+  const go = e.target.closest('[data-go]');
+  if (go && !go.disabled) { location.hash = go.dataset.go; return; }
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act, id = el.dataset.id;
+  if (a === 'tx') openTx(id);
+  else if (a === 'tx-save') saveTx(id);
+  else if (a === 'tx-unset') unsetTx(id);
+  else if (a === 'tx-hide') hideTx(id);
+  else if (a === 'tx-hide-ok') hideTxOk(id);
+  else if (a === 'person') openPerson(el.dataset.k);
+  else if (a === 'person-save') savePerson(el.dataset.k);
+  else if (a === 'rule') openRule(id);
+  else if (a === 'rule-del') delRule(id);
+  else if (a === 'newcat') newCat();
+  else if (a === 'backup') downloadBackup();
+  else if (a === 'sync-open') { if (!TEST) openSyncDlg(); }
+  else if (a === 'sync-save') saveSyncCfg();
+  else if (a === 'sync-now') Sync.run();
+  else if (a === 'sync-off') { Sync.disconnect(); dlg().close(); render(); }
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'files' || !e.target.files.length) return;
+  const files = [...e.target.files].map(f => ({ name: f.name, bytes: () => f.arrayBuffer() }));
+  e.target.value = '';
+  await importFiles(files);
+  render();
+});
+
+// ---------- Start ----------
+(async function start() {
+  if (TEST) $('#testbar').innerHTML = '<div class="testbar"><b>Testmodus</b> – eigene, leere Daten, kein Sync. Ohne <code>?test</code> in der Adresse geht es zurück zu den echten Daten.</div>';
+  try {
+    await IDB.open();
+    for (const [k, v] of await IDB.all()) docs.set(k, v);
+  } catch (e) {
+    console.warn(e);
+    $('#view').innerHTML = '<section class="card"><h3>Speicher nicht verfügbar</h3><p class="sub">Der Browser erlaubt dieser App keinen Speicher (privates Fenster?). Bitte normal öffnen.</p></section>';
+    return;
+  }
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+  recompute(); setSync(); render(); lastRoute = route().join('/');
+  if (location.hash.includes('geteilt=')) receiveShared();
+  if (!TEST && Sync.status().configured) Sync.run();
+  window.addEventListener('online', () => { if (!TEST) Sync.run(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !TEST && Sync.status().configured) Sync.run(); });
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+})();
+</script>
+</body>
+</html>
