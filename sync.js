@@ -7,12 +7,13 @@
 //      which are merged booking by booking so nothing imported on either side is lost),
 //   2. push: all unsent documents go up together as ONE commit (Git Data API).
 // Repo layout: tx/<YYYY-MM>.json (bookings, already anonymised), rules/<id>.json (personal rules),
-// settings/<name>.json. The list name ↔ Kürzel is never synced (it is not a path this file knows).
+// settings/<name>.json, prompts/<screen>.json (change requests for Claude, names already replaced by Kürzel).
+// The list name ↔ Kürzel is never synced (it is not a path this file knows).
 //
 // Works in browsers and in Node 18+ (tests): needs fetch, crypto.subtle, TextEncoder, atob.
 (function (root) {
   'use strict';
-  const PATH_RE = /^(tx|rules|settings)\/([^/]+)\.json$/;
+  const PATH_RE = /^(tx|rules|settings|prompts)\/([^/]+)\.json$/;
   const FILE_RE = /^$/; // no binary files in this app
   const API = 'https://api.github.com/repos/';
 

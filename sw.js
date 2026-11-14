@@ -2,7 +2,7 @@
 // Android-„Teilen“-Menü entgegen (Web Share Target): die Dateien landen kurz im Cache „fin-share“,
 // die App holt sie dort ab, importiert sie und löscht sie wieder.
 // VERSION setzt tools/app-veroeffentlichen.sh bei jeder Veröffentlichung neu.
-const VERSION = '2026-11-14.1650';
+const VERSION = '2026-11-14.1703';
 const CACHE = 'fin-' + VERSION;
 const SHARE = 'fin-share';
 const FILES = [

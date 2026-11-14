@@ -153,6 +153,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeri
 .dl-grid dd{margin:0;overflow-wrap:anywhere}
 .fld{display:flex;flex-direction:column;gap:5px;font-weight:700;font-size:14px}
 .fld input,.fld select{font-weight:400;font-size:16px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);min-height:46px;width:100%}
+.ai-prompt{display:block;width:100%;font-size:16px;line-height:1.4;font-family:inherit;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);resize:vertical;min-height:72px}
+.card.prompt{background:var(--surface2)}
 .st-line{display:flex;gap:9px;align-items:baseline;font-size:15px;padding:10px 12px;border-radius:10px;background:var(--surface2)}
 .swrow{display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer}
 .swrow>span{display:flex;flex-direction:column;gap:3px;font-size:16px}
@@ -264,7 +266,7 @@ const IDB = {
   },
 };
 const PRIV = 'local/privat'; // Namensliste Name ↔ Kürzel: nur hier, wird nie synchronisiert und nie exportiert
-const SYNCED = /^(tx|rules|settings)\//;
+const SYNCED = /^(tx|rules|settings|prompts)\//;
 const docs = new Map();
 const Store = {
   get: p => docs.get(p) || null,
@@ -287,7 +289,8 @@ function recompute() {
   const rules = Store.list('rules/');
   const cl = C.classify(txs, rules, cats);
   const clById = new Map(cl.map(c => [c.tx.id, c]));
-  D = { txs, cats, rules, cl, clById, months: C.monthsOf(cl) };
+  const prompts = Object.fromEntries(Store.paths().filter(p => p.startsWith('prompts/')).map(p => [p.slice(8), Store.get(p)]));
+  D = { txs, cats, rules, cl, clById, months: C.monthsOf(cl), prompts };
   const open = cl.filter(c => !c.cat).length;
   const b = $('#badge'); b.hidden = !open; b.textContent = open > 99 ? '99+' : open;
 }
@@ -530,6 +533,10 @@ function viewMore() {
     <p class="sub">${TEST ? 'Testmodus (?test): eigene Daten, kein Sync.' : st.configured ? `Repo <b>${h(st.repo)}</b>. ${st.pending ? st.pending + ' Änderung(en) warten.' : 'Alles gesendet.'}` : 'Noch nicht eingerichtet. Ohne Sync bleiben die Daten nur auf diesem Handy.'}</p>
     ${TEST ? '' : '<button type="button" class="btn" data-act="sync-open" style="margin-top:10px">Sync einstellen</button>'}
   </section>
+  ${Object.keys(D.prompts).length ? `<section class="card"><h3>Offene Prompts</h3>
+    <p class="cap">Claude baut sie beim nächsten Mal am Mac; danach verschwinden sie hier.</p>
+    <ul class="txs">${Object.entries(D.prompts).sort((a, b) => String(b[1].updatedAt).localeCompare(String(a[1].updatedAt))).map(([id, p]) => `<li><button type="button" class="tx" data-go="${h((p.screen || '#uebersicht').slice(1))}"><span class="p">${h(p.name || id)}</span><span class="a"></span><span class="m">${h(p.text.length > 90 ? p.text.slice(0, 90) + ' …' : p.text)}</span><span class="c">öffnen</span></button></li>`).join('')}</ul>
+  </section>` : ''}
   <section class="card"><h3>Anonyme Personen</h3>
     <p class="cap">Die echten Namen stehen nur auf diesem Handy und werden nie synchronisiert.</p>
     ${people.length ? `<ul class="txs">${people.map(([k, v]) => `<li><button type="button" class="tx" data-act="person" data-k="${h(k)}"><span class="p">${h(k)}</span><span class="a sub small">${v.kind === 'client' ? 'Klient' : 'Person'}</span><span class="m">${h(v.name)}</span><span class="c">umbenennen</span></button></li>`).join('')}</ul>` : '<p class="sub">Noch keine.</p>'}
@@ -551,6 +558,37 @@ function viewMore() {
     <p class="sub small" id="ver" style="margin-top:10px"></p>
   </section>`;
 }
+// ---------- Prompts für Claude ----------
+// Pro Bildschirm ein Feld „Prompt für Claude“ (prompts/<screen>.json im privaten Repo). Claude holt die
+// Prompts bei der nächsten Arbeit am Mac, baut jeden für sich und veröffentlicht ihn; danach löscht Claude
+// die Datei, und das Feld ist beim nächsten Sync wieder leer. Namen aus der Namensliste werden schon beim
+// Tippen durch ihr Kürzel ersetzt, IBANs durch „•“ – so kommt kein Klienten-Name ins Repo oder zu Claude.
+function screenOf(r = route()) {
+  const g = r[1] && D.cats.byGroup[r[1]];
+  if (r[0] === 'gruppe' && g) return { id: 'gruppe-' + r[1], name: 'Gruppe ' + g.name, hash: '#gruppe/' + r[1] };
+  if (r[0] === 'topf' && g) return { id: 'topf-' + r[1], name: g.name, hash: '#topf/' + r[1] };
+  if (r[0] === 'inbox') return { id: 'inbox', name: 'Inbox', hash: '#inbox' };
+  if (r[0] === 'import') return { id: 'import', name: 'Import', hash: '#import' };
+  if (r[0] === 'mehr') return { id: 'mehr', name: 'Mehr', hash: '#mehr' };
+  return { id: 'uebersicht', name: 'Übersicht', hash: '#uebersicht' };
+}
+function promptCard(sc) {
+  return `<section class="card prompt"><h3><label for="ai-prompt">Prompt für Claude</label></h3>
+    <p class="cap">Was soll Claude an „${h(sc.name)}“ oder an der App ändern? Wird beim nächsten Mal am Mac gebaut und veröffentlicht. Namen werden automatisch zum Kürzel.</p>
+    <textarea class="ai-prompt" id="ai-prompt" data-pid="${h(sc.id)}" rows="3" placeholder="z. B. Ausgaben pro Woche statt pro Monat zeigen" autocomplete="off">${h(D.prompts[sc.id]?.text || '')}</textarea>
+  </section>`;
+}
+function savePrompt(el, final) {
+  const id = el.dataset.pid, old = D.prompts[id];
+  const { text, hits } = C.scrubText(priv(), el.value.trim());
+  if (final && el.value.trim() !== text) { el.value = text; if (hits) setTimeout(() => toast('Namen durch Kürzel ersetzt.'), 3600); }
+  if ((old?.text || '') === text) return false;
+  const sc = screenOf(), doc = text ? { name: sc.name, screen: sc.hash, text, updatedAt: new Date().toISOString() } : null;
+  if (doc) D.prompts[id] = doc; else delete D.prompts[id];
+  Store.set('prompts/' + id, doc);
+  return true;
+}
+
 function ruleText(r) {
   const p = [];
   if (r.iban) p.push('IBAN ' + r.iban);
@@ -567,6 +605,7 @@ function route() {
   const [pathPart] = raw.split('?');
   return pathPart.split('/');
 }
+let promptEdited = false, rendering = false; // Prompt-Feld: seit dem Fokus getippt? / render() läuft gerade
 function render() {
   if (!D) return;
   const r = route(), v = $('#view');
@@ -578,7 +617,10 @@ function render() {
   else if (r[0] === 'import') html = viewImport();
   else if (r[0] === 'mehr') html = viewMore();
   else { html = viewOverview(mOk(r[1]) ? r[1] : defaultMonth()); tab = 'uebersicht'; }
-  v.innerHTML = html;
+  const sc = screenOf(r), act = document.activeElement;
+  const keep = act && act.classList && act.classList.contains('ai-prompt') ? { value: act.value, a: act.selectionStart, b: act.selectionEnd, pid: act.dataset.pid } : null;
+  rendering = true; v.innerHTML = html + promptCard(sc); rendering = false; // Chrome meldet focusout am entfernten Feld
+  if (keep && keep.pid === sc.id) { const t = $('#ai-prompt'); t.value = keep.value; t.focus({ preventScroll: true }); try { t.setSelectionRange(keep.a, keep.b); } catch {} }
   document.querySelectorAll('.tabbar a').forEach(a => { if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (r[0] === 'mehr' && window.caches) caches.keys().then(k => { const x = k.find(n => n.startsWith('fin-') && n !== 'fin-share'); const el = $('#ver'); if (x && el) el.textContent = 'Version ' + x.slice(4); }).catch(() => {});
 }
@@ -825,6 +867,13 @@ document.addEventListener('click', e => {
   else if (a === 'sync-save') saveSyncCfg();
   else if (a === 'sync-now') Sync.run();
   else if (a === 'sync-off') { Sync.disconnect(); dlg().close(); render(); }
+});
+// Prompt: bei jeder Eingabe speichern (falls die App zugeht), beim Verlassen des Felds Namen sichtbar ersetzen.
+document.addEventListener('input', e => { if (e.target.classList.contains('ai-prompt')) { promptEdited = true; savePrompt(e.target, false); } });
+document.addEventListener('focusout', e => {
+  if (rendering || !e.target.classList || !e.target.classList.contains('ai-prompt') || !promptEdited) return;
+  promptEdited = false; savePrompt(e.target, true);
+  if (D.prompts[e.target.dataset.pid]) toast(TEST ? 'Prompt nur in der Testkopie gespeichert.' : 'Prompt für Claude gespeichert.');
 });
 document.addEventListener('change', async e => {
   if (e.target.id !== 'files' || !e.target.files.length) return;

@@ -326,6 +326,24 @@
     for (const [fp, k] of Object.entries(priv.keys)) if (k === from) priv.keys[fp] = to;
     return true;
   }
+  // Freier Text (z. B. ein Prompt für Claude): jeder Name aus der Namensliste wird zu seinem Kürzel,
+  // IBANs zu „•“. „Anna Muster“, „MUSTER“ und „anna“ werden alle zu client_AM.
+  // Gibt { text, hits } zurück; hits = Anzahl Ersetzungen.
+  function scrubText(priv, text) {
+    let out = String(text || ''), hits = 0;
+    const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const people = Object.entries((priv && priv.people) || {})
+      .map(([k, p]) => [k, nameTokens(p.name).filter(t => t.length > 1).map(esc)])
+      .filter(([, toks]) => toks.length)
+      .sort((a, b) => b[1].join('').length - a[1].join('').length);
+    for (const [k, toks] of people) {
+      const one = '(?:' + toks.join('|') + ')';
+      const re = new RegExp('(?<![\\p{L}\\p{N}])' + one + '(?:[\\s,]+' + one + ')*(?![\\p{L}\\p{N}])', 'giu');
+      out = out.replace(re, () => { hits++; return k; });
+    }
+    out = out.replace(/\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b/g, () => { hits++; return '•'; });
+    return { text: out, hits };
+  }
 
   // ---------- Kategorisieren ----------
   const reCache = new Map();
@@ -401,7 +419,7 @@
   }
 
   const api = { DEFAULT_GROUPS, KIND_NAMES, SEED_RULES, MCC, CLIENT_RE, buildCats, hash, decodeBytes, parseCSV, detect, parseExport,
-    normBank99, normTR, b99Merchant, nameKey, initials, newPriv, anonymise, hidePerson, renameKurzel, knownKurzel, scrub,
+    normBank99, normTR, b99Merchant, nameKey, initials, newPriv, anonymise, hidePerson, renameKurzel, knownKurzel, scrub, scrubText,
     matches, orderRules, categorise, classify, monthOf, monthSummary, monthsOf, round2 };
   root.FinCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
