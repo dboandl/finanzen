@@ -70,6 +70,7 @@ button.sync{border:0;background:none;padding:8px 0 8px 10px;margin-bottom:-4px;c
 @media (prefers-reduced-motion: reduce){.sync.busy::before,.st-line.busy::before{animation:none}}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.card.warn{background:var(--warn-soft);border-color:var(--warn-line)}
 .card > h3,.h3{font:700 20px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin-bottom:10px}
 .card .cap{color:var(--muted);font-size:14px;margin:-6px 0 10px}
 .h2{font:700 34px/1 var(--display);margin:2px 0 4px;text-transform:uppercase}
@@ -498,8 +499,16 @@ function viewInbox() {
 }
 
 let lastImport = null;
+// Nur die installierte App (nicht der Browser-Tab) steht im Android-Teilen-Menü.
+const installed = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: minimal-ui)').matches || navigator.standalone === true;
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (location.hash.startsWith('#import')) render(); });
+window.addEventListener('appinstalled', () => { installEvt = null; render(); });
 function viewImport() {
   return `<h2 class="h2">Import</h2>
+  ${!installed() && !TEST ? `<section class="card warn"><h3>Für das Teilen-Menü installieren</h3>
+    <p class="sub">Die App läuft gerade im Browser. Im Teilen-Menü erscheint „Finanzen“ erst, wenn sie installiert ist${installEvt ? '.' : ': Chrome-Menü ⋮ → <b>App installieren</b>. Danach die App vom Startbildschirm öffnen.'}</p>
+    ${installEvt ? '<button type="button" class="btn primary" data-act="install" style="margin-top:10px">App installieren</button>' : ''}</section>` : ''}
   <section class="card">
     <label class="btn big primary filebtn">Export-Dateien wählen<input type="file" id="files" multiple accept=".csv,text/csv,text/comma-separated-values,application/csv,text/plain,application/vnd.ms-excel"></label>
     <p class="sub" style="margin-top:12px">Oder direkt aus der Bank-App: Export erstellen → <b>Teilen</b> → <b>Finanzen</b>.</p>
@@ -507,7 +516,7 @@ function viewImport() {
   ${lastImport ? `<section class="card"><h3>Ergebnis</h3><ul class="result">${lastImport.map(r => r.error ? `<li><b>${h(r.name)}</b><br><span class="err">${h(r.error)}</span></li>` : `<li><b>${h(r.label)}</b> <span class="sub small">${h(r.name)}</span><br>${r.neu} neu · ${r.dup} schon da · ${r.offen} ohne Kategorie${r.clients ? ` · ${r.clients} Klienten-Buchung${r.clients === 1 ? '' : 'en'} anonymisiert` : ''}</li>`).join('')}</ul>
     ${lastImport.some(r => r.offen) ? '<a class="btn" href="#inbox" style="margin-top:10px">Zur Inbox</a>' : ''}</section>` : ''}
   <section class="card"><h3>So bekommst du die Exporte</h3>
-    <p class="sub"><b>bank99:</b> Umsätze des Girokontos → Export → CSV.<br><b>Trade Republic:</b> Profil → Transaktionen exportieren (CSV).</p>
+    <p class="sub"><b>bank99:</b> Umsätze des Girokontos → Export → CSV.<br><b>Trade Republic:</b> Profil → Transaktionen exportieren → CSV erstellen → im Teilen-Menü <b>Finanzen</b> wählen (falls nicht sichtbar: ganz rechts <b>Mehr</b>).</p>
     <p class="sub" style="margin-top:8px">Schon importierte Buchungen werden erkannt und übersprungen, Zeiträume dürfen sich also überschneiden. Buchungen mit <b>MGT</b> (Klienten) werden vor dem Speichern anonymisiert: nur das Kürzel und die Rechnungsnummer bleiben.</p>
   </section>`;
 }
@@ -812,6 +821,7 @@ document.addEventListener('click', e => {
   else if (a === 'newcat') newCat();
   else if (a === 'backup') downloadBackup();
   else if (a === 'sync-open') { if (!TEST) openSyncDlg(); }
+  else if (a === 'install') { if (installEvt) { installEvt.prompt(); installEvt.userChoice.finally(() => { installEvt = null; render(); }); } }
   else if (a === 'sync-save') saveSyncCfg();
   else if (a === 'sync-now') Sync.run();
   else if (a === 'sync-off') { Sync.disconnect(); dlg().close(); render(); }
