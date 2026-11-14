@@ -330,7 +330,10 @@
   // ---------- Kategorisieren ----------
   const reCache = new Map();
   const rx = s => { let r = reCache.get(s); if (!r) { r = new RegExp(s, 'i'); reCache.set(s, r); } return r; };
-  const condCount = r => ['text', 'party', 'ref', 'iban', 'type', 'mcc', 'card', 'sign', 'src'].filter(k => r[k] != null && r[k] !== '').length;
+  // Wie genau eine Regel ist: Text/Name/Referenz/IBAN/Typ/MCC zählen voll, die groben Filter
+  // Vorzeichen/Karte/Quelle nur halb – so schlägt „IBAN + Referenz“ immer „IBAN + Eingang“.
+  const WEAK = { sign: 1, card: 1, src: 1 };
+  const condCount = r => ['text', 'party', 'ref', 'iban', 'type', 'mcc', 'card', 'sign', 'src'].filter(k => r[k] != null && r[k] !== '').reduce((n, k) => n + (WEAK[k] ? 0.5 : 1), 0);
   function matches(r, tx) {
     if (r.iban && r.iban.replace(/\s/g, '').toUpperCase() !== String(tx.iban || '').toUpperCase()) return false;
     if (r.src && r.src !== tx.src) return false;
