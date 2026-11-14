@@ -2,7 +2,7 @@
 // Android-„Teilen“-Menü entgegen (Web Share Target): die Dateien landen kurz im Cache „fin-share“,
 // die App holt sie dort ab, importiert sie und löscht sie wieder.
 // VERSION setzt tools/app-veroeffentlichen.sh bei jeder Veröffentlichung neu.
-const VERSION = '2026-11-14.0736';
+const VERSION = '2026-11-14.1625';
 const CACHE = 'fin-' + VERSION;
 const SHARE = 'fin-share';
 const FILES = [
@@ -28,12 +28,20 @@ async function receiveShare(req) {
   try {
     const form = await req.formData();
     const files = form.getAll('files').filter(f => f && typeof f !== 'string');
+    const texts = ['title', 'text', 'url'].map(k => form.get(k)).filter(x => typeof x === 'string' && x.trim());
     const c = await caches.open(SHARE);
     for (const k of await c.keys()) await c.delete(k);
     let i = 0;
     for (const f of files) {
       await c.put(new Request(new URL('shared/' + i++ + '?name=' + encodeURIComponent(f.name || 'export.csv'), base)), new Response(f));
     }
+    // Manche Apps teilen den Inhalt als Text statt als Datei: dann den Text als „Datei“ ablegen.
+    if (!files.length && texts.length) {
+      await c.put(new Request(new URL('shared/' + i++ + '?name=geteilter-text&text=1', base)), new Response(texts.join('\n')));
+    }
+    // Was angekommen ist (Namen, Typen, Größen), damit die App bei Problemen sagen kann, warum.
+    const info = { files: files.map(f => ({ name: f.name, type: f.type, size: f.size })), texts: texts.length };
+    await c.put(new Request(new URL('shared/info', base)), new Response(JSON.stringify(info)));
     return Response.redirect(new URL('./#import?geteilt=' + i, base).href, 303);
   } catch (err) {
     return Response.redirect(new URL('./#import?geteilt=fehler', base).href, 303);

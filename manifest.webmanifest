@@ -21,9 +21,10 @@
     "params": {
       "title": "title",
       "text": "text",
+      "url": "url",
       "files": [{
         "name": "files",
-        "accept": ["text/csv", ".csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"]
+        "accept": ["text/csv", ".csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream", "text/*", "application/*", "*/*"]
       }]
     }
   },

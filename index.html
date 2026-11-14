@@ -618,14 +618,24 @@ async function receiveShared() {
   if (q.get('geteilt') === 'fehler') { toast('Die geteilte Datei konnte nicht übernommen werden.'); return render(); }
   try {
     const c = await caches.open('fin-share'), keys = await c.keys(), files = [];
+    let info = null;
     for (const k of keys) {
-      const res = await c.match(k);
-      files.push(fileLike(new URL(k.url).searchParams.get('name') || 'export.csv', await res.arrayBuffer()));
+      const u = new URL(k.url), res = await c.match(k);
+      if (u.pathname.endsWith('/shared/info')) info = await res.json().catch(() => null);
+      else files.push({ ...fileLike(u.searchParams.get('name') || 'export.csv', await res.arrayBuffer()), isText: u.searchParams.has('text') });
       await c.delete(k);
     }
-    if (!files.length) return render();
-    await importFiles(files);
-    toast('Geteilte Datei importiert.');
+    if (!files.length) { toast('Es kam keine Datei an.'); return render(); }
+    const res = await importFiles(files);
+    files.forEach((f, i) => {
+      const r = res[i];
+      if (r && r.error) {
+        const fi = info && info.files && info.files[i];
+        r.error = f.isText ? 'Die App hat nur Text geteilt, keine Datei. Bitte in der Bank-App den Export als Datei (CSV) teilen.'
+          : r.error + (fi ? ` (geteilt als ${fi.type || 'unbekannter Typ'}, ${Math.round(fi.size / 1024)} KB)` : '');
+      }
+    });
+    toast(res.some(r => !r.error) ? 'Geteilte Datei importiert.' : 'Geteilte Datei konnte nicht importiert werden.');
   } catch (e) { console.warn(e); toast('Geteilte Datei konnte nicht importiert werden.'); }
   render();
 }
